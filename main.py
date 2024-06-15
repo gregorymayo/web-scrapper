@@ -30,7 +30,7 @@ service = Service(chrome_driver_path)
 
 options = Options()
 options.add_argument('--disable-blink-features=AutomationControlled')  # Disables detection of automation
-# options.add_argument('--headless')  # Run in headless mode if you don't need a GUI
+options.add_argument('--headless')  # Run in headless mode if you don't need a GUI
 options.add_argument('--no-sandbox') # Disables the Chrome sandboxing security feature
 options.add_argument('--disable-dev-shm-usage') # Disables t /dev/shm, which is the shared memory space in Linux
 
@@ -73,7 +73,7 @@ def extract_packages(driver, count):
 all_packages = []
 
 scroll_container = driver.find_element(By.CSS_SELECTOR, '.cdk-virtual-scroll-viewport')
-last_height = driver.execute_script("return arguments[0].scrollHeight", scroll_container)
+last_height = driver.execute_script('return arguments[0].scrollHeight', scroll_container)
 # print("Initial Height:", last_height)
 count = 1
 
@@ -81,7 +81,7 @@ count = 1
 all_packages = extract_packages(driver, count)
 
 while True:
-    driver.execute_script("arguments[0].scrollTop = arguments[0].scrollHeight", scroll_container)
+    driver.execute_script('arguments[0].scrollTop = arguments[0].scrollHeight', scroll_container)
     time.sleep(2)  # Wait for the new data to load
     # driver.find_element(By.TAG_NAME, 'body').send_keys(Keys.END)
     # time.sleep(2)  # Wait for the new data to load
@@ -91,7 +91,7 @@ while True:
     if new_packages:
         all_packages.extend(new_packages)
     # new_height = driver.execute_script("return document.body.scrollHeight")
-    new_height = driver.execute_script("return arguments[0].scrollHeight", scroll_container)
+    new_height = driver.execute_script('return arguments[0].scrollHeight', scroll_container)
     # print("New Height:", new_height)
     if new_height == last_height:
         break
@@ -186,7 +186,7 @@ all_package_info = []
 
 options = Options()
 options.add_argument('--disable-blink-features=AutomationControlled')  # Disables detection of automation
-# options.add_argument('--headless')  # Run in headless mode if you don't need a GUI
+options.add_argument('--headless')  # Run in headless mode if you don't need a GUI
 options.add_argument('--no-sandbox')  # Disables the Chrome sandboxing security feature
 options.add_argument('--disable-dev-shm-usage')  # Disables /dev/shm, which is the shared memory space in Linux
 
@@ -195,21 +195,27 @@ driver = webdriver.Chrome(service=service, options=options)
 
 for package in unique_packages:
     if(package['url']) is not None:
+        print(f"Processing {package['title']}")
         # driver.get(package['url'])
         # wait = WebDriverWait(driver, 10)
         # wait.until(EC.visibility_of_element_located((By.CLASS_NAME, "item")))
         # wait.until(EC.visibility_of_element_located((By.CLASS_NAME, "price--new-price")))
-        response = requests.get(package['url'])
-        html_content = response.content
-        soup = BeautifulSoup(html_content, 'html.parser')
+        try:
+            response = requests.get(package['url'])
+            response.raise_for_status()
+            html_content = response.content
+        except (requests.exceptions.RequestException, requests.exceptions.HTTPError) as e:
+            print(f"Error fetching URL for {package['title']}: {e}")
+            continue
 
+        soup = BeautifulSoup(html_content, 'html.parser')
         # soup = BeautifulSoup(driver.page_source, 'html.parser')
 
         try:
-            title = soup.find('div', class_="item").get_text(strip=True) if soup.find('div', class_="item") else None
-            new_price = soup.find('div', class_="price--new-price").strong.get_text(strip=True) if soup.find('div', class_="price--new-price") else None
-            old_price = soup.find('p', class_="price--old-price").get_text(strip=True) if soup.find('p', class_="price--old-price") else None
-            result_test = soup.find('div', class_="description").get_text(strip=True) if soup.find('div', class_="description") else None
+            title = soup.find('div', class_="item").get_text(strip=True) if soup.find('div', class_='item') else None
+            new_price = soup.find('div', class_="price--new-price").strong.get_text(strip=True) if soup.find('div', class_='price--new-price') else None
+            old_price = soup.find('p', class_="price--old-price").get_text(strip=True) if soup.find('p', class_='price--old-price') else None
+            result_test = soup.find('div', class_="description").get_text(strip=True) if soup.find('div', class_='description') else None
         except AttributeError:
             print(f"Error: Required fields were not found for {package}.")
             continue  # Skip to the next package if there's an error
@@ -233,13 +239,30 @@ for package in unique_packages:
 
             # Additional code to extract test names for sections starting with "Meliputi"
             if re.match(r'^Meliputi \d+ Tes$', section_title):
-                tests = description.find_all('span', class_='package-tests_content-name')
-                test_names = [test.get_text(strip=True) for test in tests]
-                package_info[section_title] = ', '.join(test_names)
+                try:
+                    # tests = description.find_all('span', class_='package-tests_content-name')
+                    # test_names = [test.get_text(strip=True) for test in tests]
+                    # package_info[section_title] = ', '.join(test_names)
+                    driver.get(package['url'])
+                    wait = WebDriverWait(driver, 10)
+                    wait.until(EC.visibility_of_element_located((By.CLASS_NAME, 'info-header-title')))
+                    elements = driver.find_elements(By.CLASS_NAME, 'package-tests_content-detail')
+
+                    test_details = []
+                    for element in elements:
+                        driver.execute_script("arguments[0].click();", element)
+                        wait.until(EC.visibility_of_element_located((By.CLASS_NAME, 'test-info-header_title')))
+                        test_title = driver.find_element(By.CLASS_NAME, 'test-info-header_title').text
+                        test_content = driver.find_element(By.CLASS_NAME, 'test-info_content').text
+                        test_details.append(f"{test_title}: {test_content}")
+                    package_info[section_title] = ' '.join(test_details)
+                except Exception as e:
+                    print(f"Error processing tests for {package['title']}: {e}")
 
         all_package_info.append(package_info)
+        print(f"Done processing {package['title']}")
 
-# driver.quit()
+driver.quit()
 
 # # Write data to CSV after collecting all data
 # with open('/Users/gregorymayo/Downloads/output.csv', 'w', newline='', encoding='utf-8') as csvfile:
